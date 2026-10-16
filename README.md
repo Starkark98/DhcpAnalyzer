@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo/logo-on-dark.png">
+    <img src="docs/logo/logo.png" alt="DHCP Analyzer logo" width="170">
+  </picture>
+</p>
+
 # DHCP Analyzer *by Starkark98*
 
 ![Version](https://img.shields.io/badge/version-1.0.1-2563eb)
@@ -36,6 +43,7 @@ One PowerShell file, nothing to install on the server, no agents, no database. P
 - [Contributing](#contributing)
 - [Project structure](#project-structure)
 - [Maintainer](#maintainer)
+- [Built with AI assistance](#built-with-ai-assistance)
 - [Disclaimer](#disclaimer)
 - [Trademarks](#trademarks)
 - [License](#license)
@@ -105,6 +113,8 @@ Install-WindowsFeature RSAT-DHCP
 6. When the analysis is complete the dashboard opens in your browser. Use **Save as...** to keep a copy.
 
 ![Launcher window](docs/images/01-launcher.png)
+
+> **Tip: a desktop shortcut with the logo.** `.cmd` files cannot carry an icon, but a shortcut can. Right-click `Start DhcpAnalyzer.cmd` → *Show more options* → *Create shortcut*, move the shortcut to your desktop, then *Properties* → *Change Icon...* → *Browse* and pick `docs\logo\DhcpAnalyzer.ico`.
 
 ## Guided tour of the dashboard
 
@@ -332,6 +342,7 @@ DhcpAnalyzer.ps1          The whole application: analysis engine, dashboard temp
 Start DhcpAnalyzer.cmd    Launcher (double-click)
 Start Demo.cmd            Opens the dashboard with sample data
 docs/images/              Screenshots used in this README
+docs/logo/                Logo (light and dark backgrounds), app icon (.png, .ico)
 CHANGELOG.md              Version history
 SECURITY.md               How to report vulnerabilities
 CONTRIBUTING.md           How to contribute
@@ -341,6 +352,12 @@ LICENSE                   MIT License with the Commons Clause (no selling)
 ## Maintainer
 
 DHCP Analyzer is created and maintained by **Starkark98**. Version history is in [CHANGELOG.md](CHANGELOG.md).
+
+## Built with AI assistance
+
+In the spirit of transparency: DHCP Analyzer was developed with the assistance of **[Claude Code](https://www.anthropic.com/claude-code)**, Anthropic's AI coding assistant, which helped write, review and debug the code and the documentation. The maintainer defined the goals and the design, directed the work, reviewed the results and is responsible for the project.
+
+As with any tool, read the source and evaluate the results critically before relying on them (see [Disclaimer](#disclaimer)).
 
 ## Disclaimer
 
@@ -353,7 +370,7 @@ DHCP Analyzer is provided **"as is", without warranty of any kind**, express or 
 
 ## Trademarks
 
-Microsoft, Windows, Windows Server, Active Directory, PowerShell, Internet Explorer and Microsoft Edge are trademarks of the Microsoft group of companies. Google Chrome is a trademark of Google LLC. Firefox is a trademark of the Mozilla Foundation. All other trademarks are the property of their respective owners. Their use here is for identification purposes only and does not imply endorsement.
+Microsoft, Windows, Windows Server, Active Directory, PowerShell, Internet Explorer and Microsoft Edge are trademarks of the Microsoft group of companies. Google Chrome is a trademark of Google LLC. Firefox is a trademark of the Mozilla Foundation. Claude and Claude Code are trademarks of Anthropic, PBC. All other trademarks are the property of their respective owners. Their use here is for identification purposes only and does not imply endorsement.
 
 ## License
 

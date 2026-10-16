@@ -3,6 +3,8 @@
 ## 1.0.1 (2026-10-15)
 
 ### Added
+- Logo: in the launcher window, as window/taskbar icon, as browser favicon and in the dashboard header; logo files and a `.ico` for shortcuts in `docs/logo`.
+- Credits: the README and the script help state that the tool was developed with the assistance of Claude Code (Anthropic).
 - `-NoOpen` parameter: saves the dashboard without opening the browser. Use it with `-NoGui` in scheduled tasks.
 - `-OutHtml` now also works when the window is used, and creates missing folders.
 
