@@ -12,6 +12,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Read-only](https://img.shields.io/badge/server%20changes-none%20(read--only)-16a34a)
 ![License](https://img.shields.io/badge/license-MIT%20%2B%20Commons%20Clause-d97706)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-support%20the%20project-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/starkark98)
 
 **A free, read-only health check for Windows DHCP servers — with an interactive dashboard you can understand at a glance.**
 
@@ -40,6 +41,7 @@ One PowerShell file, nothing to install on the server, no agents, no database. P
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Getting help](#getting-help)
+- [Support the project](#support-the-project)
 - [Contributing](#contributing)
 - [Project structure](#project-structure)
 - [Maintainer](#maintainer)
@@ -321,7 +323,7 @@ Run it once per server. Each report is a separate file.
 Not yet: version 1.0.x analyzes IPv4 only.
 
 **Is it really free?**
-Yes, to use. Individuals and organizations of any kind, companies included, can use it on their own networks at no cost. What is not allowed is **selling** it, or selling products or services based on it: see [License](#license). If it saves you time, consider giving the project a star on GitHub.
+Yes, to use. Individuals and organizations of any kind, companies included, can use it on their own networks at no cost. What is not allowed is **selling** it, or selling products or services based on it: see [License](#license). If it saves you time, consider giving the project a star on GitHub or [supporting it on Ko-fi](#support-the-project).
 
 ## Getting help
 
@@ -330,6 +332,14 @@ Yes, to use. Individuals and organizations of any kind, companies included, can 
 - **Security vulnerabilities:** follow [SECURITY.md](SECURITY.md).
 
 DHCP Analyzer is maintained in spare time. Support is **best effort**: there is no guaranteed response time and no service-level agreement.
+
+## Support the project
+
+DHCP Analyzer is free and maintained in spare time. If it saves you time or helps you avoid an outage, you can support its development with a small donation:
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/starkark98)
+
+Donations are entirely voluntary and do not buy support, priority or a commercial license. Starring the repository, reporting bugs and sharing the tool with colleagues help just as much.
 
 ## Contributing
 

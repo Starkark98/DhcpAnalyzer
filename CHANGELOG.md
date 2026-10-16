@@ -1,6 +1,11 @@
 # Changelog
 
-## 1.0.1 (2026-10-15)
+## Unreleased
+
+### Added
+- Donations: "Sponsor" button on the GitHub page (`.github/FUNDING.yml`) and a *Support the project* section in the README, both pointing to Ko-fi. The program itself is unchanged.
+
+## 1.0.1 (2026-10-16)
 
 ### Added
 - Logo: in the launcher window, as window/taskbar icon, as browser favicon and in the dashboard header; logo files and a `.ico` for shortcuts in `docs/logo`.
