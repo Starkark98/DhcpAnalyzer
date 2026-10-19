@@ -5,6 +5,14 @@
 ### Added
 - Donations: "Sponsor" button on the GitHub page (`.github/FUNDING.yml`) and a *Support the project* section in the README, both pointing to Ko-fi. The program itself is unchanged.
 
+### Security
+- The dashboard now carries a strict Content-Security-Policy: no network access at all, and only its own inline script (pinned by SHA-256 hash) may run. Injected scripts or event handlers are blocked by the browser.
+- Every value coming from the DHCP server, the logs or DNS (scope ids and ranges, states, exclusion map entries, failover scope lists, log scope links) is now escaped before being inserted into the page, and numeric fields are forced to numbers. Tested with injection payloads in all fields.
+- Removed the inline `onclick` handlers and the CSS selectors built from server data.
+- The server name (command line, window, `last.txt`) must be a host name, FQDN or IP address: values with spaces, quotes or a leading `-` are rejected, so they cannot alter the command line used for the UAC relaunch.
+- `-OutHtml` must end with `.html`/`.htm`; a folder (also with a trailing `\`) gets the default file name.
+- The audit log path read from the server's configuration must be a local drive path (`X:\...`): UNC paths and `..` are refused, so a server cannot make the tool connect to another host with your credentials.
+
 ## 1.0.1 (2026-10-16)
 
 ### Added

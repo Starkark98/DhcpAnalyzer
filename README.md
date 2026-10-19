@@ -226,7 +226,7 @@ The suggestions below are general guidance, not instructions for your specific e
 | `-NoGui` | Runs without the window, ideal for scheduled tasks |
 | `-SkipExclusionScan` | Skips the network check of excluded IPs (faster, no network traffic towards the excluded addresses) |
 | `-Demo` | Builds the dashboard from sample data |
-| `-OutHtml` | Where to save the dashboard (default: `%TEMP%`). Missing folders are created; an existing file is overwritten |
+| `-OutHtml` | Where to save the dashboard (default: `%TEMP%`): an `.html`/`.htm` file, or a folder (the default file name is used). Missing folders are created; an existing file is overwritten |
 | `-NoElevate` | Does not ask for administrator rights at startup |
 | `-NoOpen` | Saves the dashboard without opening the browser: use it with `-NoGui` in scheduled tasks |
 
@@ -265,6 +265,7 @@ You can read the whole source in [`DhcpAnalyzer.ps1`](DhcpAnalyzer.ps1) before r
 
 - **Read-only.** DHCP Analyzer only uses the `Get-*` cmdlets listed above and opens the audit log files in read-only mode. It never creates, modifies or deletes anything on the DHCP server.
 - **No data leaves your network.** No telemetry, no update checks, no calls to the internet, no external libraries. The dashboard is a single offline HTML file.
+- **Hardened report.** Hostnames and other values come from the network and are treated as untrusted: they are always escaped, and the dashboard's Content-Security-Policy blocks any network access and any script other than its own. Input such as the server name and the report path is validated, and the audit log path read from the server must be a local drive path.
 - **Files written on your PC:** the HTML report (in `%TEMP%` unless you choose another path) and the name of the last server analyzed (`%APPDATA%\DhcpAnalyzer\last.txt`). Delete them whenever you want.
 - **The report contains sensitive data**: hostnames, MAC addresses, IP plan, server configuration. Hostnames and MAC addresses can identify people and may qualify as **personal data** under laws such as the GDPR. Store, share and delete reports according to your organization's policies, as you would any internal network documentation.
 - **The exclusion scan generates network traffic** (see [How it works](#how-it-works)). It is light, but an IDS/IPS or EDR may flag it as a port scan: inform your security team in advance, or untick the option / use `-SkipExclusionScan`.
@@ -285,7 +286,7 @@ DHCP Analyzer is an administration tool intended for **IT staff analyzing infras
 - **Point-in-time picture**: the report reflects the moment of the analysis. Devices that are switched off, asleep or firewalled may look unused.
 - **ARP check** works only for subnets the PC running the tool is directly connected to.
 - **Exclusion scan** is skipped for scopes with more than 1024 excluded addresses and for inactive scopes.
-- **Logs**: up to 1000 events per event log and the latest 500 problem entries of the audit log are shown. Remote audit files are reached through the administrative share of their drive (for example `C$`), and `%windir%` in the audit path is assumed to be `C:\Windows`.
+- **Logs**: up to 1000 events per event log and the latest 500 problem entries of the audit log are shown. Remote audit files are reached through the administrative share of their drive (for example `C$`), `%windir%` in the audit path is assumed to be `C:\Windows`, and only local drive paths are accepted (an audit log on a network share is not read).
 - **One server per run**: in a failover pair, analyze one partner; to compare servers, run the tool once per server.
 - **Windows PowerShell 5.1** is required; PowerShell 7 is not supported.
 

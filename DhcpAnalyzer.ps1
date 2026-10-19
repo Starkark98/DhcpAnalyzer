@@ -56,6 +56,19 @@ $AppVersion = '1.0.1'
 function IpToInt([string]$ip) { $b = [Net.IPAddress]::Parse($ip).GetAddressBytes(); [Array]::Reverse($b); [BitConverter]::ToUInt32($b, 0) }
 function IntToIp([uint32]$n)  { $b = [BitConverter]::GetBytes($n); [Array]::Reverse($b); [Net.IPAddress]::new([byte[]]$b).ToString() }
 
+# Input validation. A server name is a host name, FQDN or IP address: no spaces, quotes or leading '-'
+# (it is passed on the command line when the script relaunches itself with UAC).
+function Test-ServerName([string]$name) { $name -match '^[A-Za-z0-9_][A-Za-z0-9._:-]{0,252}$' }
+# The report path must be an .html/.htm file; a folder (or a path ending with '\') gets the default file name.
+function Resolve-OutHtml([string]$path, [string]$server) {
+    $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
+    if ($path -match '[\\/]$' -or (Test-Path -LiteralPath $path -PathType Container)) {
+        $path = Join-Path $path ("DhcpReport_{0}_{1}.html" -f ($server -replace '[^\w.-]', '_'), (Get-Date -Format yyyyMMdd_HHmmss))
+    }
+    if ([IO.Path]::GetExtension($path) -notmatch '^\.html?$') { throw "The report path must end with .html or .htm: $path" }
+    $path
+}
+
 # =============================================================================
 #  ANALYSIS ENGINE (runs in a background runspace)
 # =============================================================================
@@ -191,10 +204,13 @@ $Collector = {
         else {
             try {
                 $aPath   = ([string]$audit.Path) -replace '(?i)%windir%|%systemroot%', 'C:\Windows'
+                # The path comes from the server's configuration: accept only a local drive path. A UNC path
+                # (\\otherhost\share) would make this PC connect to another host with the current user's credentials.
+                if ($aPath -notmatch '^[A-Za-z]:\\[^:*?"<>|]*$' -or $aPath -match '\\\.\.(\\|$)') { throw "Unsupported audit log path on the server: $aPath" }
                 $isLocal = ($Server -in @('localhost', '127.0.0.1', '.', $env:COMPUTERNAME)) -or ($Server -like "$env:COMPUTERNAME.*")
                 $aDir    = if ($isLocal) { $aPath } else { "\\$Server\" + ($aPath -replace '^([A-Za-z]):', '$1$') }
                 $ci      = [Globalization.CultureInfo]::InvariantCulture
-                foreach ($file in @(Get-ChildItem -Path $aDir -Filter 'DhcpSrvLog-*.log' -ErrorAction Stop)) {
+                foreach ($file in @(Get-ChildItem -LiteralPath $aDir -Filter 'DhcpSrvLog-*.log' -File -ErrorAction Stop)) {
                     if ($file.LastWriteTime -lt $since) { continue }
                     $sr = [IO.StreamReader]::new([IO.File]::Open($file.FullName, 'Open', 'Read', 'ReadWrite'))
                     try {
@@ -430,6 +446,7 @@ $LogoPng = 'iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAAAXNSR0IArs4c6QAAAARn
 # =============================================================================
 $Template = @'
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-__SCRIPT_HASH__'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
 <title>DHCP Analyzer by Starkark98</title>
 <link rel="icon" type="image/png" href="data:image/png;base64,__ICON__">
 <style>
@@ -528,19 +545,24 @@ const badge=(n,c)=>`<span class="badge ${c||''}">${n}</span>`;
 const SEV={crit:0,warn:1,info:2}, SEVL={crit:'Critical',warn:'Warning',info:'Info'};
 const STATE=[['ActiveReservation','Active reservation','ok'],['InactiveReservation','Inactive reservation','mut'],['Declined','Conflict','crit'],['Expired','Expired','warn'],['Offered','Offered','info'],['Active','Active','ok']];
 const stInfo=s=>STATE.find(x=>String(s).includes(x[0]))||[s,s||'-','mut'];
-const pill=s=>{const x=stInfo(s);return `<span class="pill ${x[2]}">${x[1]}</span>`};
+const pill=s=>{const x=stInfo(s);return `<span class="pill ${x[2]}">${esc(x[1])}</span>`};
 const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
 const fmt=n=>Number(n||0).toLocaleString('en-US');
 const z=n=>n?fmt(n):'<span class="mut">0</span>';
 const wday=d=>{const x=new Date(d+'T00:00:00');return isNaN(x)?'':x.toLocaleDateString('en-US',{weekday:'short'})};
 
 /* ---------- data normalization ---------- */
+/* every value from the server is untrusted: text goes through esc(), numbers are forced with num() */
+const num=v=>{const n=Number(v);return Number.isFinite(n)?n:0};
 D.scopes=arr(D.scopes); D.failover=arr(D.failover); D.serverOptions=arr(D.serverOptions);
-const LG=D.logs||null; if(LG){['events','days','rows'].forEach(k=>LG[k]=arr(LG[k]))}
+D.serverOptions.forEach(o=>o.id=num(o.id));
+const LG=D.logs||null; if(LG){['events','days','rows'].forEach(k=>LG[k]=arr(LG[k]));
+  LG.events.forEach(e=>{e.level=num(e.level);e.id=num(e.id);e.count=num(e.count)}); LG.rows.forEach(r=>r.id=num(r.id))}
 D.failover.forEach(f=>f.scopes=arr(f.scopes));
 D.scopes.forEach(s=>{
   ['options','exclusions','reservations','leases'].forEach(k=>s[k]=arr(s[k]));
-  if(s.scan) s.scan.ips=arr(s.scan.ips);
+  s.inUse=num(s.inUse); s.free=num(s.free); s.options.forEach(o=>o.id=num(o.id)); s.exclusions.forEach(e=>e.count=num(e.count));
+  if(s.scan){s.scan.ips=arr(s.scan.ips); s.scan.ips.forEach(x=>{if(!['occ','chk','free'].includes(x.cls))x.cls='chk'})}
   s.pool=s.inUse+s.free; s.pct=s.pool?Math.round(s.inUse*1000/s.pool)/10:0;
   s.cnt={act:0,exp:0,bad:0,rina:0};
   s.leases.forEach(l=>{const st=String(l.state);
@@ -555,15 +577,15 @@ D.scopes.forEach(s=>{
 /* ---------- issues ---------- */
 const I=[]; const add=(sev,text,scope,go)=>I.push({sev,text,scope,go});
 const scopeOf=ip=>{ip=String(ip||'').trim();if(!/^\d+\.\d+\.\d+\.\d+$/.test(ip))return null;const a=ipN(ip);return D.scopes.find(s=>((a&ipN(s.mask))>>>0)===ipN(s.id))||null};
-const sLbl=s=>`Scope <b>${s.id}</b>${s.name?' ('+esc(s.name)+')':''}`;
-const S=D.settings||{};
+const sLbl=s=>`Scope <b>${esc(s.id)}</b>${s.name?' ('+esc(s.name)+')':''}`;
+const S=D.settings||{}; ['allowN','denyN','conflict'].forEach(k=>{if(S[k]!=null)S[k]=num(S[k])});
 if(S.authorized===false)add('crit','Server is not authorized in Active Directory');
 if(!D.failover.length)add('warn','No failover configured: the DHCP server is a single point of failure');
 D.failover.forEach(f=>{if(f.state!=='Normal')add('crit',`Failover <b>${esc(f.name)}</b> is in state ${esc(f.state)}`)});
 if(S.auditOn===false)add('warn','DHCP audit log is disabled');
 if(S.dnsDyn&&S.dnsDyn!=='Never'&&!S.dnsCred)add('warn','Dynamic DNS updates are enabled without dedicated DNS credentials (not recommended, especially when DHCP runs on a domain controller)');
 D.scopes.forEach(s=>{
-  const L=`Scope <b>${s.id}</b>${s.name?' ('+esc(s.name)+')':''}`;
+  const L=sLbl(s);
   if(!s.active){add('info',L+' is inactive',s.id);return}
   if(s.pct>=CRIT)add('crit',`${L} is ${s.pct}% full (${s.free} free)`,s.id);
   else if(s.pct>=WARN)add('warn',`${L} is ${s.pct}% full (${s.free} free)`,s.id);
@@ -600,7 +622,7 @@ const logProb=lt.full+lt.conflict+lt.denied+lt.dnsfail+evErr;
 const nC=I.filter(i=>i.sev==='crit').length,nW=I.filter(i=>i.sev==='warn').length,nI=I.filter(i=>i.sev==='info').length;
 
 /* ---------- components ---------- */
-function sec(id,title,b,body,open){return `<section class="sec${open?' open':''}" id="${id}"><h2 onclick="this.parentNode.classList.toggle('open')">${title} ${b||''}</h2><div class="body">${body}</div></section>`}
+function sec(id,title,b,body,open){return `<section class="sec${open?' open':''}" id="${id}"><h2>${title} ${b||''}</h2><div class="body">${body}</div></section>`}
 function chips(id,items){return `<div class="chips" data-for="${id}">${items.map((it,i)=>`<button data-f="${it[0]}" class="${i?'':'on'}">${it[1]} ${badge(it[2])}</button>`).join('')}</div>`}
 function makeGrid(host,cols,rows,o={}){
   const search=o.search!==false; let sk=null,sd=1,q='';
@@ -625,7 +647,7 @@ function mapHtml(sc,wide){
   const c={occ:0,chk:0,free:0}; sc.ips.forEach(x=>c[x.cls]++);
   const tiles=sc.ips.map(x=>{const tip=[x.ip,x.ping!==''&&x.ping!=null?'Ping: '+x.ping+' ms':'',x.tcp?'TCP: '+x.tcp:'',x.mac?'MAC: '+x.mac:'',x.dns?'DNS: '+x.dns:'',x.resv?'Reservation: '+x.resv:''].filter(Boolean).join('\n');
     const nm=x.resv||String(x.dns||'').split('.')[0];
-    return `<div class="t ${x.cls}" title="${esc(tip)}"><b>.${x.ip.split('.').slice(wide?2:3).join('.')}</b><span>${esc(nm)}</span></div>`}).join('');
+    return `<div class="t ${x.cls}" title="${esc(tip)}"><b>.${esc(String(x.ip).split('.').slice(wide?2:3).join('.'))}</b><span>${esc(nm)}</span></div>`}).join('');
   const bl=[];let st=null,la=null;
   sc.ips.forEach(x=>{const n=ipN(x.ip);if(x.cls==='free'&&st!==null&&n===la+1){la=n;return}
     if(st!==null){bl.push([st,la]);st=null}if(x.cls==='free'){st=n;la=n}});
@@ -642,10 +664,10 @@ function mapHtml(sc,wide){
 /* ---------- scopes ---------- */
 function renderScopes(f){
   const L=D.scopes.filter(s=>f==='all'||(f==='att'&&(s.sev==='crit'||s.sev==='warn'))||(f==='off'&&!s.active));
-  $('#sct').innerHTML=L.map(s=>{const c=pctCls(s.pct);return `<tr class="sc${s.active?'':' off'}" data-id="${s.id}">
+  $('#sct').innerHTML=L.map(s=>{const c=pctCls(s.pct);return `<tr class="sc${s.active?'':' off'}" data-id="${esc(s.id)}">
     <td><span class="dot ${s.sev}" title="${s.sev==='ok'?'No issues':SEVL[s.sev]}"></span></td>
-    <td><b>${s.id}</b>${s.active?'':' <span class="pill">inactive</span>'}<div class="mut">${esc(s.name)}</div></td>
-    <td>${s.start} &ndash; ${s.end}<div class="mut">/${maskLen(s.mask)} &middot; lease ${esc(s.lease)}</div></td>
+    <td><b>${esc(s.id)}</b>${s.active?'':' <span class="pill">inactive</span>'}<div class="mut">${esc(s.name)}</div></td>
+    <td>${esc(s.start)} &ndash; ${esc(s.end)}<div class="mut">/${maskLen(s.mask)} &middot; lease ${esc(s.lease)}</div></td>
     <td><div class="bar"><i class="${c}" style="width:${Math.min(s.pct,100)}%"></i></div><div class="mut">${s.inUse} / ${s.pool} &middot; <b class="t${c}">${s.pct}%</b></div></td>
     <td class="num">${s.free}</td>
     <td class="num">${z(s.reservations.length)}${s.cnt.rina?`<div class="mut">${s.cnt.rina} inactive</div>`:''}</td>
@@ -671,7 +693,7 @@ function showTab(el,s,t){
   el.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   const T=el.querySelector('.tab');
   if(t==='ov'){
-    T.innerHTML=`<div class="kv">${kv('Range',s.start+' &ndash; '+s.end)}${kv('Subnet mask',s.mask+' (/'+maskLen(s.mask)+')')}${kv('Lease duration',esc(s.lease))}${kv('Distributable pool',plural(s.pool,'IP')+' ('+s.free+' free)')}${kv('Failover',s.failover?esc(s.failover):'None')}${s.desc?kv('Description',esc(s.desc)):''}</div>
+    T.innerHTML=`<div class="kv">${kv('Range',esc(s.start)+' &ndash; '+esc(s.end))}${kv('Subnet mask',esc(s.mask)+' (/'+maskLen(s.mask)+')')}${kv('Lease duration',esc(s.lease))}${kv('Distributable pool',plural(s.pool,'IP')+' ('+s.free+' free)')}${kv('Failover',s.failover?esc(s.failover):'None')}${s.desc?kv('Description',esc(s.desc)):''}</div>
       <h3>Options</h3>${s.options.length?`<div class="kv">${s.options.map(o=>kv(pad(o.id)+' '+esc(o.name)+(o.inherited?' <i>(from server)</i>':''),esc(o.value))).join('')}</div>`:'<div class="mut">No options</div>'}`;
   }else if(t==='lease'){
     const F=[['All',()=>true],['Active',l=>stInfo(l.state)[2]==='ok'],['Expired',l=>String(l.state).includes('Expired')],['Reservations',l=>String(l.state).includes('Reservation')],['Conflicts',l=>String(l.state).includes('Declined')||l.host==='BAD_ADDRESS']];
@@ -684,14 +706,15 @@ function showTab(el,s,t){
     makeGrid(T,[{k:'ip',t:'IP',sv:r=>ipN(r.ip)},{k:'name',t:'Name'},{k:'mac',t:'MAC'},{k:'type',t:'Type'},{k:'desc',t:'Description'},{k:'st',t:'State',f:r=>pill(r.st)}],
       s.reservations.map(r=>Object.assign({},r,{st:lm[r.ip]||'InactiveReservation'})),{empty:'No reservations'});
   }else{
-    T.innerHTML=(s.exclusions.length?`<div class="kv">${s.exclusions.map(e=>kv(e.start+' &ndash; '+e.end,plural(e.count,'IP'))).join('')}</div>`:'<div class="mut">No exclusions</div>')
+    T.innerHTML=(s.exclusions.length?`<div class="kv">${s.exclusions.map(e=>kv(esc(e.start)+' &ndash; '+esc(e.end),plural(e.count,'IP'))).join('')}</div>`:'<div class="mut">No exclusions</div>')
       +(s.scan?'<h3>Real usage of excluded IPs</h3>'+mapHtml(s.scan,maskLen(s.mask)<24):(s.exclusions.length?`<div class="mut hint">${D.scanned?'Scan not performed (scope inactive).':'Exclusion scan was not requested.'}</div>`:''));
   }
 }
 function openScope(id,tab){
   $('#scope').classList.add('open');
-  let tr=document.querySelector(`tr.sc[data-id="${id}"]`);
-  if(!tr){document.querySelectorAll('[data-for="scf"] button').forEach(b=>b.classList.toggle('on',b.dataset.f==='all'));renderScopes('all');tr=document.querySelector(`tr.sc[data-id="${id}"]`)}
+  const find=()=>[...document.querySelectorAll('tr.sc')].find(r=>r.dataset.id===id);   /* no selector built from data */
+  let tr=find();
+  if(!tr){document.querySelectorAll('[data-for="scf"] button').forEach(b=>b.classList.toggle('on',b.dataset.f==='all'));renderScopes('all');tr=find()}
   if(!tr)return;
   toggleScope(tr,tab||'ov');tr.scrollIntoView({behavior:'smooth',block:'start'});
   tr.classList.add('flash');setTimeout(()=>tr.classList.remove('flash'),1500);
@@ -700,7 +723,7 @@ function openScope(id,tab){
 /* ---------- issues list ---------- */
 function renderIssues(f){
   const L=I.filter(i=>f==='all'||i.sev===f).sort((a,b)=>SEV[a.sev]-SEV[b.sev]);
-  $('#isl').innerHTML=L.length?L.map(i=>`<div class="iss ${i.sev}${i.scope?' lnk" data-scope="'+i.scope+'"':i.go?' lnk" data-go="'+i.go+'"':'"'}><span class="pill ${i.sev}">${SEVL[i.sev]}</span><span>${i.text}</span>${i.scope?'<span class="go">Open scope &rsaquo;</span>':i.go?'<span class="go">Open &rsaquo;</span>':''}</div>`).join('')
+  $('#isl').innerHTML=L.length?L.map(i=>`<div class="iss ${i.sev}${i.scope?' lnk" data-scope="'+esc(i.scope)+'"':i.go?' lnk" data-go="'+i.go+'"':'"'}><span class="pill ${i.sev}">${SEVL[i.sev]}</span><span>${i.text}</span>${i.scope?'<span class="go">Open scope &rsaquo;</span>':i.go?'<span class="go">Open &rsaquo;</span>':''}</div>`).join('')
     :'<div class="iss ok"><span class="pill ok">OK</span><span>No issues found</span></div>';
 }
 
@@ -717,7 +740,7 @@ function search(q){
     if(s.scan)s.scan.ips.forEach(x=>{if(x.cls!=='free'&&(m(x.ip)||m(x.dns)||m(x.mac)||m(x.resv)))out.push({t:'Excluded IP',ip:x.ip,n:x.dns||x.resv,mac:x.mac,sc:s.id,st:'',tab:'exc'})});
   });
   R.innerHTML=sec('sr','Search results',badge(out.length,out.length?'ok':''),'<div class="gg"></div>',true);
-  makeGrid(R.querySelector('.gg'),[{k:'t',t:'Type'},{k:'ip',t:'IP',sv:r=>ipN(r.ip)},{k:'n',t:'Host / Name'},{k:'mac',t:'MAC'},{k:'sc',t:'Scope',sv:r=>ipN(r.sc)},{k:'st',t:'State',f:r=>r.st?pill(r.st):''},{k:'go',t:'',f:r=>`<button data-scope="${r.sc}" data-tab="${r.tab}">Open &rsaquo;</button>`}],
+  makeGrid(R.querySelector('.gg'),[{k:'t',t:'Type'},{k:'ip',t:'IP',sv:r=>ipN(r.ip)},{k:'n',t:'Host / Name'},{k:'mac',t:'MAC'},{k:'sc',t:'Scope',sv:r=>ipN(r.sc)},{k:'st',t:'State',f:r=>r.st?pill(r.st):''},{k:'go',t:'',f:r=>`<button data-scope="${esc(r.sc)}" data-tab="${r.tab}">Open &rsaquo;</button>`}],
     out.slice(0,500),{search:false,empty:'No results'});
 }
 
@@ -773,7 +796,7 @@ h+=sec('failover','Failover',badge(D.failover.length||'none',foCls),
     <td>${f.mode==='LoadBalance'?'Load balance '+esc(f.lb)+'%':'Reserve '+esc(f.reserve)+'% &middot; role '+esc(f.role)}</td>
     <td><span class="pill ${f.state==='Normal'?'ok':'crit'}">${esc(f.state)}</span></td><td>${esc(f.mclt)}</td>
     <td>${f.auto?'Yes ('+esc(f.switchInt)+')':'No'}</td>
-    <td>${f.scopes.map(x=>`<a data-scope="${x}">${x}</a>`).join(', ')}</td></tr>`).join('')}</tbody></table></div>`
+    <td>${f.scopes.map(x=>`<a data-scope="${esc(x)}">${esc(x)}</a>`).join(', ')}</td></tr>`).join('')}</tbody></table></div>`
   :'<div class="mut">No failover relationship configured.</div>',foCls!=='ok');
 
 h+=sec('config','Server configuration','',
@@ -791,8 +814,8 @@ h+=sec('config','Server configuration','',
 
 $('#m').innerHTML=h;
 renderIssues('all');renderScopes('all');
-if(LG&&$('#lgr'))makeGrid($('#lgr'),[{k:'time',t:'Time'},{k:'id',t:'Event',sv:r=>r.id,f:r=>{const a=AUD[r.id]||[r.id,'mut'];return `<span class="pill ${a[1]}">${a[0]}</span>`}},{k:'ip',t:'IP',sv:r=>ipN(r.ip)},
-  {k:'scope',t:'Scope',sv:r=>ipN(r.scope),f:r=>r.scope?`<a data-scope="${r.scope}">${r.scope}</a>`:''},{k:'host',t:'Host'},{k:'mac',t:'MAC'},{k:'desc',t:'Description'}],LG.rows,{empty:'No problems in the last 7 days'});
+if(LG&&$('#lgr'))makeGrid($('#lgr'),[{k:'time',t:'Time'},{k:'id',t:'Event',sv:r=>r.id,f:r=>{const a=AUD[r.id]||[r.id,'mut'];return `<span class="pill ${a[1]}">${esc(a[0])}</span>`}},{k:'ip',t:'IP',sv:r=>ipN(r.ip)},
+  {k:'scope',t:'Scope',sv:r=>ipN(r.scope),f:r=>r.scope?`<a data-scope="${esc(r.scope)}">${esc(r.scope)}</a>`:''},{k:'host',t:'Host'},{k:'mac',t:'MAC'},{k:'desc',t:'Description'}],LG.rows,{empty:'No problems in the last 7 days'});
 if(LG&&$('#lge'))makeGrid($('#lge'),[{k:'level',t:'Level',sv:r=>r.level,f:r=>{const l=LVL[r.level]||['Info','mut'];return `<span class="pill ${l[1]}">${l[0]}</span>`}},{k:'log',t:'Log'},{k:'id',t:'Event ID',sv:r=>r.id,num:1},
   {k:'count',t:'Count',sv:r=>r.count,num:1},{k:'first',t:'First'},{k:'last',t:'Last'},{k:'msg',t:'Message'}],LG.events,{empty:'No errors or warnings in the last 7 days'});
 
@@ -801,6 +824,7 @@ document.addEventListener('click',e=>{
   let t;
   if((t=e.target.closest('[data-scope]'))){openScope(t.dataset.scope,t.dataset.tab);return}
   if((t=e.target.closest('[data-go]'))){const s=document.getElementById(t.dataset.go);s.classList.add('open');s.scrollIntoView({behavior:'smooth',block:'start'});return}
+  if((t=e.target.closest('.sec>h2'))){t.parentNode.classList.toggle('open');return}
   if((t=e.target.closest('.chips[data-for] button'))){const p=t.parentNode;p.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===t));(p.dataset.for==='isf'?renderIssues:renderScopes)(t.dataset.f);return}
   if((t=e.target.closest('tr.sc'))){toggleScope(t)}
 });
@@ -814,13 +838,21 @@ document.addEventListener('keydown',e=>{if(e.key==='/'&&document.activeElement.t
 # =============================================================================
 #  REPORT OUTPUT
 # =============================================================================
-# '<' only occurs inside JSON strings: \u003c keeps hostnames like "</script>" or "<!--" from breaking the page
-function Build-Html([string]$json) { $Template.Replace('__ICON__', $IconPng).Replace('__DATA__', $json.Replace('<', '\u003c')) }
+# '<' only occurs inside JSON strings: \u003c keeps hostnames like "</script>" or "<!--" from breaking the page.
+# The Content-Security-Policy lets only this exact inline script run, identified by its SHA-256 hash.
+# The HTML parser turns CRLF into LF before hashing, so the page is normalised to LF first.
+function Build-Html([string]$json) {
+    $html = $Template.Replace('__ICON__', $IconPng).Replace('__DATA__', $json.Replace('<', '\u003c')).Replace("`r`n", "`n")
+    $s = $html.IndexOf('<script>') + 8; $e = $html.IndexOf('</script>', $s)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $hash = [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($html.Substring($s, $e - $s)))); $sha.Dispose()
+    $html.Substring(0, $s).Replace('__SCRIPT_HASH__', $hash) + $html.Substring($s)   # placeholder replaced in the <head> only
+}
 function Save-Report([string]$json, [string]$server, [string]$path) {
     if ($path) {
-        $path = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path)
+        $path = Resolve-OutHtml $path $server
         $dir  = Split-Path $path -Parent
-        if ($dir -and -not (Test-Path $dir)) { [void](New-Item $dir -ItemType Directory -Force) }
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { [void](New-Item $dir -ItemType Directory -Force) }
     }
     else { $path = Join-Path $env:TEMP ("DhcpReport_{0}_{1}.html" -f ($server -replace '[^\w.-]', '_'), (Get-Date -Format yyyyMMdd_HHmmss)) }
     [IO.File]::WriteAllText($path, (Build-Html $json), [Text.UTF8Encoding]::new($false))
@@ -857,6 +889,19 @@ trap {
     Show-Message "$AppName stopped because of an unexpected error:`n$($_.Exception.Message)" 'Error'
     break
 }
+# Validate the command-line input before using it anywhere
+if ($DhcpServer -and -not (Test-ServerName $DhcpServer)) {
+    $msg = "Invalid DHCP server name: '$DhcpServer'. Use a host name, an FQDN or an IP address."
+    if ($NoGui) { throw $msg } else { Show-Message $msg 'Error'; return }
+}
+if ($OutHtml) {
+    try {
+        $OutHtml = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutHtml)
+        # a folder: create it and drop the trailing '\' (before a closing quote it would escape the quote on relaunch)
+        if ($OutHtml -match '[\\/]$') { [void](New-Item $OutHtml -ItemType Directory -Force); if ($OutHtml.Length -gt 3) { $OutHtml = $OutHtml.TrimEnd('\', '/') } }
+        [void](Resolve-OutHtml $OutHtml 'check')   # throws on a wrong extension
+    } catch { if ($NoGui) { throw } else { Show-Message $_.Exception.Message 'Error'; return } }
+}
 $NoBrowserMsg = "Report created, but no modern browser (Edge, Chrome or Firefox) was found on this PC: Internet Explorer cannot display the dashboard. Use 'Save as' or 'Show in folder' and open the file on a PC with Edge or Chrome, or run DHCP Analyzer from your workstation with the RSAT DHCP tools."
 
 # =============================================================================
@@ -876,7 +921,7 @@ if ($Demo) {
 }
 
 if ($NoGui) {
-    while (-not $DhcpServer) { $DhcpServer = (Read-Host 'DHCP server name').Trim() }
+    while (-not (Test-ServerName $DhcpServer)) { $DhcpServer = (Read-Host 'DHCP server name (host name, FQDN or IP)').Trim() }
     $sync = [hashtable]::Synchronized(@{ Status = ''; Progress = 0; Done = $false; Error = $null; Json = $null })
     Write-Host "Analyzing $DhcpServer..." -ForegroundColor Cyan
     & $Collector $DhcpServer (-not $SkipExclusionScan) $sync
@@ -895,8 +940,8 @@ try { $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.Windo
 $relArgs = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$PSCommandPath`" -NoElevate"
 if ($DhcpServer) { $relArgs += " -DhcpServer `"$DhcpServer`"" }
 if ($SkipExclusionScan) { $relArgs += ' -SkipExclusionScan' }
-# Resolved now: the elevated process starts in System32, where a relative path would point somewhere else
-if ($OutHtml) { $OutHtml = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutHtml); $relArgs += " -OutHtml `"$OutHtml`"" }
+# Already validated and resolved to an absolute path above (the elevated process starts in System32)
+if ($OutHtml) { $relArgs += " -OutHtml `"$OutHtml`"" }
 if (-not $isAdmin -and -not $NoElevate) {
     try { Start-Process powershell.exe -Verb RunAs -ArgumentList $relArgs; return }
     catch { }   # UAC declined: continue without elevation
@@ -988,7 +1033,7 @@ $win.Add_ContentRendered({
     catch { if (-not (Get-Module -ListAvailable DhcpServer)) { Set-Status 'DhcpServer module not found: install the RSAT "DHCP Server Tools" to analyze a server. The demo works anyway.' $true } }
 })
 if ($DhcpServer) { $ui.CmbServer.Text = $DhcpServer }
-elseif (Test-Path $lastFile) { try { $ui.CmbServer.Text = "$(Get-Content $lastFile -Raw)".Trim() } catch { } }
+elseif (Test-Path $lastFile) { try { $last = "$(Get-Content $lastFile -Raw)".Trim(); if (Test-ServerName $last) { $ui.CmbServer.Text = $last } } catch { } }
 if ($SkipExclusionScan) { $ui.ChkScan.IsChecked = $false }
 
 $timer = [Windows.Threading.DispatcherTimer]::new()
@@ -1012,6 +1057,7 @@ $ui.BtnRun.Add_Click({
     try {
         $srv = "$($ui.CmbServer.Text)".Trim()
         if (-not $srv) { Set-Status 'Enter the DHCP server name.' $true; return }
+        if (-not (Test-ServerName $srv)) { Set-Status 'Invalid server name: use a host name, an FQDN or an IP address (no spaces or quotes).' $true; return }
         try { if (-not (Test-Path $cfgDir)) { [void](New-Item $cfgDir -ItemType Directory) }; Set-Content $lastFile $srv } catch { }
         Set-Busy $true
         $script:srv    = $srv
