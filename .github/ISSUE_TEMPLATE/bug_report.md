@@ -16,7 +16,8 @@ Paste the full message shown in the window (you can select and copy it), or the 
 ```
 
 **Environment**
-- DHCP Analyzer version (shown in the window next to the title, e.g. v1.0.1):
+- DHCP Analyzer version (shown in the window next to the title, e.g. v1.1.0):
+- Mode: Analyze / Compare (source: server, baseline .json or report .html):
 - Windows version of the PC running the tool:
 - Windows Server version of the DHCP server:
 - Run as administrator: yes / no

@@ -7,7 +7,7 @@
 
 # DHCP Analyzer *by Starkark98*
 
-![Version](https://img.shields.io/badge/version-1.0.1-2563eb)
+![Version](https://img.shields.io/badge/version-1.1.0-2563eb)
 ![PowerShell](https://img.shields.io/badge/PowerShell-5.1-5391FE?logo=powershell&logoColor=white)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6)
 ![Read-only](https://img.shields.io/badge/server%20changes-none%20(read--only)-16a34a)
@@ -17,6 +17,8 @@
 **A free, read-only health check for Windows DHCP servers — with an interactive dashboard you can understand at a glance.**
 
 One PowerShell file, nothing to install on the server, no agents, no database. Point it at a DHCP server and in a few minutes you know how full your scopes are, where the conflicts are, whether failover is healthy, what the logs say about the last 7 days, and which excluded IPs are actually free to reclaim.
+
+**Migrating to a new DHCP server?** [Compare](#compare-two-servers-migrations) the old and the new one: every missing scope, option, reservation, exclusion, policy or class is listed in one page.
 
 ![DHCP Analyzer dashboard](docs/images/02-dashboard-overview.png)
 
@@ -31,6 +33,7 @@ One PowerShell file, nothing to install on the server, no agents, no database. P
 - [Requirements](#requirements)
 - [Quick start](#quick-start)
 - [Guided tour of the dashboard](#guided-tour-of-the-dashboard)
+- [Compare two servers (migrations)](#compare-two-servers-migrations)
 - [What the issues mean](#what-the-issues-mean)
 - [Command line](#command-line)
 - [Scheduled reports](#scheduled-reports)
@@ -63,6 +66,10 @@ Its most distinctive feature is the **real usage check of excluded IP ranges**. 
 ## Features
 
 - **Whole-server analysis** in one click: every scope, lease, reservation, exclusion, option, failover relationship and key server setting (service state, version, MAC filters, audit, DNS updates).
+- **Policies, classes and option definitions**: server and scope policies (conditions, IP ranges, options), user and vendor classes, custom option definitions and superscopes.
+- **Compare two servers** for 1:1 migrations: old vs new, or a saved baseline vs the new server, with a clear verdict and every difference ranked by severity.
+- **Easy refresh**: click *Analyze* (or *Compare*) again with the same inputs and the same report file is updated.
+- **Any report can be a baseline**: compare a new server with a saved baseline `.json` or with any analysis report `.html` created by DHCP Analyzer.
 - **Logs and events of the last 7 days**: daily lease activity from the DHCP audit log (new, renewals, releases, conflicts, pool exhausted, denied, DNS failures) and DHCP errors and warnings from the Windows event logs, grouped and counted.
 - **Prioritized issues** (critical, warning, info), each linked to the affected scope.
 - **Scope overview** with utilization bars, free addresses, active and expired leases, reservations, conflicts, gateway, DNS and failover.
@@ -104,15 +111,16 @@ Install-WindowsFeature RSAT-DHCP
 
 ## Quick start
 
-1. **Download** the ZIP of the latest version from the **Releases** section of this repository and extract it to any folder. If you want, compare its SHA-256 hash with the one published in the release notes (`Get-FileHash .\DhcpAnalyzer-v1.0.1.zip`).
+1. **Download** the ZIP of the latest version from the **Releases** section of this repository and extract it to any folder. If you want, compare its SHA-256 hash with the one published in the release notes (`Get-FileHash .\DhcpAnalyzer-v1.1.0.zip`).
 2. **Unblock** the files. Windows marks downloaded files as untrusted; run this once in PowerShell, in the extracted folder:
    ```powershell
    Get-ChildItem -Recurse | Unblock-File
    ```
 3. **Double-click `Start DhcpAnalyzer.cmd`.** Accept the administrator prompt (UAC), or decline it if your account already has DHCP read access.
-4. **Choose the DHCP server.** Servers authorized in Active Directory are listed in the drop-down; you can also type a name or an IP address.
-5. Leave **"Check real usage of excluded IPs"** ticked if you want the exclusion map (read [Responsible use](#responsible-use) first), then click **Analyze**.
-6. When the analysis is complete the dashboard opens in your browser. Use **Save as...** to keep a copy.
+4. **Choose what to do:** *Analyze a server* (the default) or *Compare two servers (migration)* (see [Compare two servers](#compare-two-servers-migrations)).
+5. **Choose the DHCP server.** Servers authorized in Active Directory are listed in the drop-down; you can also type a name or an IP address.
+6. Leave **"Check real usage of excluded IPs"** ticked if you want the exclusion map (read [Responsible use](#responsible-use) first), then click **Analyze**.
+7. When the analysis is complete the dashboard opens in your browser. Use **Save as...** to keep a copy and **Save baseline...** to keep the data for a future comparison. To refresh the report later, click **Analyze** again with the same inputs: the same file is updated.
 
 ![Launcher window](docs/images/01-launcher.png)
 
@@ -142,6 +150,7 @@ One row per scope. The dot on the left is the scope's worst issue (green means n
 - **Leases**: every lease, filterable by *Active*, *Expired*, *Reservations*, *Conflicts*. Click a column header to sort, use the filter box to narrow the list.
 - **Reservations**: all reservations with their current state. An *inactive reservation* usually means the device is off or has been retired.
 - **Exclusions**: excluded ranges and, if the scan was enabled, the real usage map.
+- **Policies**: the scope's DHCP policies in processing order, with their conditions, IP ranges, options and lease duration.
 
 ![Lease tab filtered on conflicts](docs/images/04-scope-leases.png)
 
@@ -180,11 +189,45 @@ The section opens automatically when there is something to look at. *Pool exhaus
 
 ### 8. Failover and server configuration
 
-Collapsed by default when healthy. They show failover relationships (partner, mode, state, MCLT, auto switchover, scopes covered) and server settings: DHCP Server service state, server version, MAC allow/deny filters, conflict detection, audit log, database backup, dynamic DNS updates, name protection, DNS update credentials and server-level options.
+Collapsed by default when healthy. They show failover relationships (partner, mode, state, MCLT, auto switchover, scopes covered) and server settings: DHCP Server service state, server version, MAC allow/deny filters, conflict detection, audit log, database backup, dynamic DNS updates, name protection, DNS update credentials and server-level options. Below them: server-level policies, user and vendor classes, option definitions (standard and custom) and superscopes.
 
 Use **Expand all** and **Collapse all** in the top bar to open or close every section. The dashboard follows your system's light or dark theme:
 
 ![Dark mode](docs/images/07-dark-mode.png)
+
+## Compare two servers (migrations)
+
+Moving DHCP to a new server (for example with `Export-DhcpServer` / `Import-DhcpServer`, or by hand)? Compare the old and the new server before the cut-over: DHCP Analyzer lists everything that is missing or different on the new one.
+
+![Compare mode in the window](docs/images/11-launcher-compare.png)
+
+1. In the window choose **Compare two servers (migration)**.
+2. **Source (old)**: the server you are migrating from, or a file chosen with the *Baseline...* button — useful when the old server is already switched off:
+   - a **baseline** `.json` saved earlier with *Save baseline...*, or
+   - any **analysis report** `.html` of DHCP Analyzer (for example the report you made before the migration).
+
+   Reports created by an older version (1.0.x) do not contain policies, classes, option definitions and superscopes: these are then simply not compared, and the report says so. Comparison reports and files of other tools are refused.
+3. **Target (new)**: the server you are migrating to. Both servers must be reachable; they are only read.
+4. Click **Compare**. If a server cannot be read, the message says which one (source or target) and why. Comparing a server with itself is refused.
+5. The report opens with a **verdict**: *Equivalent*, *Review the differences* (warnings only) or *Not equivalent* (at least one critical difference).
+
+![Compare dashboard](docs/images/09-compare.png)
+
+**What is compared:** scopes (range, mask, state, lease duration, name, description), scope and server options (effective values), exclusions, reservations (IP, MAC/client id, type, name), scope and server policies (conditions, ranges, options, order, lease), user and vendor classes, option definitions, superscopes, failover relationships and the main server settings (AD authorization, audit log, conflict detection, dynamic DNS, DNS credentials, MAC filters).
+
+**How differences are ranked:**
+
+| Severity | Meaning | Examples |
+|---|---|---|
+| Critical | Something on the old server is **missing on the new one**, or would change what clients get | Missing scope, reservation, option, exclusion, policy, class or option definition; different MAC in a reservation; different range or mask |
+| Warning | Present on both but **different** | Option value, lease duration, policy conditions, failover relationship not re-created yet, target scope still inactive |
+| Info | Only on the new server, or cosmetic | New scopes, server name, names and descriptions |
+
+Leases are not compared one by one (they change all the time): the **Scopes** table shows the addresses in use on both sides for reference. Click a scope to see only its differences.
+
+![Compare scopes](docs/images/10-compare-scopes.png)
+
+> **Typical findings that are fine:** a target scope still *inactive* before the cut-over, failover relationships re-created only after the migration, DNS credentials configured only on the new server. They are shown as warnings so you can confirm them, not as errors.
 
 ## What the issues mean
 
@@ -218,6 +261,7 @@ The suggestions below are general guidance, not instructions for your specific e
 
 ```powershell
 .\DhcpAnalyzer.ps1 [-DhcpServer <name>] [-NoGui] [-SkipExclusionScan] [-Demo] [-OutHtml <path>] [-NoElevate] [-NoOpen]
+                   [-SaveBaseline <path>] [-CompareWith <name>] [-Baseline <file.json|report.html>] [-DemoCompare]
 ```
 
 | Parameter | Description |
@@ -229,6 +273,10 @@ The suggestions below are general guidance, not instructions for your specific e
 | `-OutHtml` | Where to save the dashboard (default: `%TEMP%`): an `.html`/`.htm` file, or a folder (the default file name is used). Missing folders are created; an existing file is overwritten |
 | `-NoElevate` | Does not ask for administrator rights at startup |
 | `-NoOpen` | Saves the dashboard without opening the browser: use it with `-NoGui` in scheduled tasks |
+| `-SaveBaseline` | With an analysis: also saves the collected data as a baseline `.json` (file or folder) for a later comparison |
+| `-CompareWith` | Compare mode: the **target (new)** server. The source is `-DhcpServer` or `-Baseline` |
+| `-Baseline` | Compare mode: the **source** taken from a file instead of a live `-DhcpServer`: a baseline `.json` or an analysis report `.html` of DHCP Analyzer |
+| `-DemoCompare` | Builds a compare dashboard from two sample servers with deliberate differences |
 
 Examples:
 
@@ -236,8 +284,19 @@ Examples:
 # Report saved to a share, without the exclusion scan and without opening the browser
 .\DhcpAnalyzer.ps1 -DhcpServer DHCP01 -NoGui -NoOpen -SkipExclusionScan -OutHtml "\\fileserver\it\dhcp\dhcp01.html"
 
-# Demo
+# Migration check: old server vs new server
+.\DhcpAnalyzer.ps1 -DhcpServer DHCP01 -CompareWith DHCP03 -NoGui -OutHtml C:\Reports\
+
+# Before the migration: analyze the old server and keep a baseline...
+.\DhcpAnalyzer.ps1 -DhcpServer DHCP01 -NoGui -SaveBaseline C:\Reports\
+# ...after the migration (old server already off): compare the baseline with the new server
+.\DhcpAnalyzer.ps1 -Baseline C:\Reports\DhcpBaseline_DHCP01_20261022_0900.json -CompareWith DHCP03 -NoGui
+# ...or use an analysis report of the old server as the source
+.\DhcpAnalyzer.ps1 -Baseline C:\Reports\DhcpReport_DHCP01_20261015_101500.html -CompareWith DHCP03 -NoGui
+
+# Demos
 .\DhcpAnalyzer.ps1 -Demo
+.\DhcpAnalyzer.ps1 -DemoCompare
 ```
 
 ## Scheduled reports
@@ -254,10 +313,12 @@ The report at `-OutHtml` is overwritten at every run. With `-NoGui`, an error en
 
 DHCP Analyzer is a single Windows PowerShell script. When you click **Analyze** it:
 
-1. **Reads the DHCP server** with the read-only cmdlets of the Microsoft `DhcpServer` module: `Get-DhcpServerv4Scope`, `Get-DhcpServerv4ScopeStatistics`, `Get-DhcpServerv4Lease -AllLeases`, `Get-DhcpServerv4Reservation`, `Get-DhcpServerv4ExclusionRange`, `Get-DhcpServerv4OptionValue`, `Get-DhcpServerv4Failover`, `Get-DhcpServerSetting`, `Get-DhcpServerDatabase`, `Get-DhcpServerAuditLog`, `Get-DhcpServerv4DnsSetting`, `Get-DhcpServerDnsCredential`, `Get-DhcpServerVersion`, `Get-DhcpServerv4FilterList`, `Get-DhcpServerv4Filter` (and `Get-DhcpServerInDC` to fill the server list).
+1. **Reads the DHCP server** with the read-only cmdlets of the Microsoft `DhcpServer` module: `Get-DhcpServerv4Scope`, `Get-DhcpServerv4ScopeStatistics`, `Get-DhcpServerv4Lease -AllLeases`, `Get-DhcpServerv4Reservation`, `Get-DhcpServerv4ExclusionRange`, `Get-DhcpServerv4OptionValue`, `Get-DhcpServerv4Failover`, `Get-DhcpServerSetting`, `Get-DhcpServerDatabase`, `Get-DhcpServerAuditLog`, `Get-DhcpServerv4DnsSetting`, `Get-DhcpServerDnsCredential`, `Get-DhcpServerVersion`, `Get-DhcpServerv4FilterList`, `Get-DhcpServerv4Filter`, `Get-DhcpServerv4Policy`, `Get-DhcpServerv4PolicyIPRange`, `Get-DhcpServerv4Class`, `Get-DhcpServerv4OptionDefinition`, `Get-DhcpServerv4Superscope` (and `Get-DhcpServerInDC` to fill the server list).
 2. **Reads service state and logs**: `Get-Service` for the DHCP Server service, `Get-WinEvent` for the DHCP event logs, and the `DhcpSrvLog-*.log` audit files, opened read-only.
 3. **Optionally checks excluded IPs** of active scopes from your PC: ICMP ping (3 passes, 1 s timeout), TCP connection attempts on ports 22, 80, 135, 443, 445, 3389 and 9100 (1 s timeout, no data sent), the local ARP table, and a reverse DNS lookup through your configured DNS servers.
 4. **Builds the dashboard**: all data is embedded in one HTML file with inline styles and scripts, written to `%TEMP%` (or to `-OutHtml`) and opened in your browser.
+
+In **Compare** mode it reads the configuration of both servers with the same cmdlets (no exclusion scan, no logs, lease counts only), or takes the source from a baseline `.json` or an analysis report `.html`, and the comparison itself is done inside the report.
 
 You can read the whole source in [`DhcpAnalyzer.ps1`](DhcpAnalyzer.ps1) before running it.
 
@@ -266,7 +327,8 @@ You can read the whole source in [`DhcpAnalyzer.ps1`](DhcpAnalyzer.ps1) before r
 - **Read-only.** DHCP Analyzer only uses the `Get-*` cmdlets listed above and opens the audit log files in read-only mode. It never creates, modifies or deletes anything on the DHCP server.
 - **No data leaves your network.** No telemetry, no update checks, no calls to the internet, no external libraries. The dashboard is a single offline HTML file.
 - **Hardened report.** Hostnames and other values come from the network and are treated as untrusted: they are always escaped, and the dashboard's Content-Security-Policy blocks any network access and any script other than its own. Input such as the server name and the report path is validated, and the audit log path read from the server must be a local drive path.
-- **Files written on your PC:** the HTML report (in `%TEMP%` unless you choose another path) and the name of the last server analyzed (`%APPDATA%\DhcpAnalyzer\last.txt`). Delete them whenever you want.
+- **Files written on your PC:** the HTML report (in `%TEMP%` unless you choose another path), the baseline files you choose to save, and the names of the last servers used (`%APPDATA%\DhcpAnalyzer\last.txt` and `last-target.txt`). Delete them whenever you want. A baseline contains the same configuration data as a report: treat it as sensitive too.
+- **Baseline files and reports used as a source are checked**: they must come from DHCP Analyzer (comparison reports and other tools' files are refused); only their data is taken, parsed and written again before going into a report, never copied into it as it is.
 - **The report contains sensitive data**: hostnames, MAC addresses, IP plan, server configuration. Hostnames and MAC addresses can identify people and may qualify as **personal data** under laws such as the GDPR. Store, share and delete reports according to your organization's policies, as you would any internal network documentation.
 - **The exclusion scan generates network traffic** (see [How it works](#how-it-works)). It is light, but an IDS/IPS or EDR may flag it as a port scan: inform your security team in advance, or untick the option / use `-SkipExclusionScan`.
 - **Administrator prompt.** The launcher asks for elevation because local access to the DHCP service can require it. You can decline the prompt or use `-NoElevate`.
@@ -287,7 +349,8 @@ DHCP Analyzer is an administration tool intended for **IT staff analyzing infras
 - **ARP check** works only for subnets the PC running the tool is directly connected to.
 - **Exclusion scan** is skipped for scopes with more than 1024 excluded addresses and for inactive scopes.
 - **Logs**: up to 1000 events per event log and the latest 500 problem entries of the audit log are shown. Remote audit files are reached through the administrative share of their drive (for example `C$`), `%windir%` in the audit path is assumed to be `C:\Windows`, and only local drive paths are accepted (an audit log on a network share is not read).
-- **One server per run**: in a failover pair, analyze one partner; to compare servers, run the tool once per server.
+- **One server per analysis**: in a failover pair, analyze one partner. Compare mode reads two servers, but compares configuration only (no exclusion scan, no logs, no lease-by-lease comparison).
+- **Compare scope**: IPv4 configuration as listed in [Compare two servers](#compare-two-servers-migrations). Server-level settings not listed there (for example bindings, database paths, IPv6) are not compared.
 - **Windows PowerShell 5.1** is required; PowerShell 7 is not supported.
 
 ## Troubleshooting
@@ -320,8 +383,14 @@ Yes. Relationships, state and covered scopes are shown, and scopes not protected
 **Can I analyze several servers?**
 Run it once per server. Each report is a separate file.
 
+**Can it check a DHCP migration?**
+Yes: use [Compare two servers](#compare-two-servers-migrations). If the old server is already off, compare a baseline or an analysis report made before the migration with the new server.
+
+**How do I refresh a report?**
+Click **Analyze** (or **Compare**) again with the same inputs: the same report file is updated. Reload the browser tab (F5) if it is still open. If you change the server, the mode or the exclusion-scan option, a new report file is created.
+
 **Does it support IPv6 scopes?**
-Not yet: version 1.0.x analyzes IPv4 only.
+Not yet: version 1.1.x analyzes IPv4 only.
 
 **Is it really free?**
 Yes, to use. Individuals and organizations of any kind, companies included, can use it on their own networks at no cost. What is not allowed is **selling** it, or selling products or services based on it: see [License](#license). If it saves you time, consider giving the project a star on GitHub or [supporting it on Ko-fi](#support-the-project).
@@ -403,4 +472,4 @@ Because of the Commons Clause, DHCP Analyzer is **source-available** software, n
 
 ---
 
-*DHCP Analyzer by **Starkark98** · v1.0.1 · see the [changelog](CHANGELOG.md)*
+*DHCP Analyzer by **Starkark98** · v1.1.0 · see the [changelog](CHANGELOG.md)*
