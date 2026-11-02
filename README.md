@@ -20,6 +20,8 @@ One PowerShell file, nothing to install on the server, no agents, no database. P
 
 **Migrating to a new DHCP server?** [Compare](#compare-two-servers-migrations) the old and the new one: every missing scope, option, reservation, exclusion, policy or class is listed in one page.
 
+Companion of [DNS Analyzer](https://github.com/Starkark98/DnsAnalyzer): the same read-only health check and migration compare for Windows DNS servers.
+
 ![DHCP Analyzer dashboard](docs/images/02-dashboard-overview.png)
 
 > **Want to see it first?** Download the ZIP from **Releases**, extract it and double-click **`Start Demo.cmd`**: the dashboard opens with realistic sample data. No DHCP server needed.
